@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        #reader {
+            width: 300px;
+            margin: auto;
+        }
+        input {
+            width: 80%;
+            padding: 10px;
+            margin: 10px;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            background: green;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin: 10px 5px;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: darkgreen;
+        }
+        table {
+            width: 80%;
+            margin: 20px auto;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .copy-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Scan QR Code</h2>
+    <div id="reader"></div>
+    <input type="text" id="qrData" placeholder="Scanned QR Code" readonly>
+    <button onclick="startScanner()">Start Scanner</button>
+    <button onclick="addToTable()">Add to Table</button>
+    <button onclick="clearTable()">Clear Table</button>
+    <button onclick="copyAll()">Copy All</button>
+
+    <h3>Scanned QR Codes</h3>
+    <table id="qrTable">
+        <thead>
+            <tr>
+                <th>S.No</th>
+                <th>QR Code Data</th>
+                <th>Timestamp</th>
+                <th>Copy</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- QR Code data rows will appear here -->
+        </tbody>
+    </table>
+
+    <script>
+        let scannedData = JSON.parse(localStorage.getItem('scannedData')) || [];
+        let currentScan = '';
+
+        function startScanner() {
+            const scanner = new Html5Qrcode("reader");
+
+            scanner.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: 250 },
+                (qrCodeMessage) => {
+                    document.getElementById("qrData").value = qrCodeMessage;
+                    currentScan = qrCodeMessage;
+                },
+                (errorMessage) => {
+                    console.log("Scanner error: ", errorMessage);
+                }
+            ).catch(err => console.log("Scanner error: ", err));
+        }
+
+        function addToTable() {
+            if (!currentScan) {
+                alert("Please scan a QR code first!");
+                return;
+            }
+
+            if (isDuplicate(currentScan)) {
+                alert("This QR code has already been scanned!");
+                return;
+            }
+
+            const timestamp = new Date().toLocaleString();
+
+            // Send data to Google Apps Script
+            fetch('https://script.google.com/macros/s/AKfycby-xya8cQBOGCg_okfwUebG5m69oBLE9semVBJoYkoUbFwUYY4dA7oQ0TEOubBC23VH/exec', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: new URLSearchParams({
+                    'qrData': currentScan,
+                    'timestamp': timestamp
+                })
+            }).then(response => response.text())
+              .then(result => console.log(result))
+              .catch(error => console.error('Error:', error));
+
+            scannedData.push({ qrData: currentScan, timestamp: timestamp });
+
+            localStorage.setItem('scannedData', JSON.stringify(scannedData));
+
+            updateTable();
+
+            document.getElementById("qrData").value = '';
+            currentScan = '';
+        }
+
+        function isDuplicate(qrData) {
+            return scannedData.some(data => data.qrData === qrData);
+        }
+
+        function updateTable() {
+            const table = document.getElementById("qrTable").getElementsByTagName("tbody")[0];
+            table.innerHTML = '';
+
+            scannedData.forEach((data, index) => {
+                const row = table.insertRow();
+                const cell0 = row.insertCell(0);
+                const cell1 = row.insertCell(1);
+                const cell2 = row.insertCell(2);
+                const cell3 = row.insertCell(3);
+
+                cell0.innerHTML = index + 1;
+                cell1.innerHTML = data.qrData;
+                cell2.innerHTML = data.timestamp;
+                
+                const copyButton = document.createElement("button");
+                copyButton.innerHTML = "📋";
+                copyButton.classList.add("copy-btn");
+                copyButton.onclick = function () {
+                    copyToClipboard(data.qrData);
+                };
+
+                cell3.appendChild(copyButton);
+            });
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert("Copied to clipboard: " + text);
+            }).catch(err => {
+                console.error("Failed to copy: ", err);
+            });
+        }
+
+        function copyAll() {
+            if (scannedData.length === 0) {
+                alert("No data to copy!");
+                return;
+            }
+
+            let allData = scannedData.map((data, index) => `${index + 1}. ${data.qrData} - ${data.timestamp}`).join("\n");
+            navigator.clipboard.writeText(allData).then(() => {
+                alert("All QR codes copied!");
+            }).catch(err => {
+                console.error("Failed to copy: ", err);
+            });
+        }
+
+        function clearTable() {
+            scannedData = [];
+            localStorage.removeItem('scannedData');
+            updateTable();
+        }
+
+        updateTable();
+    </script>
+
+</body>
+</html>
